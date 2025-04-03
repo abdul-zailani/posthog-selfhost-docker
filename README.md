@@ -47,20 +47,32 @@ posthog-docker-compose-poc/
    cp .env.example .env
    ```
 
-2. **Build & Run**
+2. **Build image & pull dependency**
    ```bash
    make build
-   make up
+   make pull
    ```
 
-3. **Check Migrasi**
+3. **Start core services terlebih dahulu**
+   > Pastikan database, Kafka, ClickHouse, dan object storage sudah running
+   ```bash
+   make start-core
+   ```
+
+4. **Jalankan migrasi database**
+   ```bash
+   make migrate
+   ```
+
+5. **Jalankan semua service PostHog**
+   ```bash
+   make start-posthog
+   ```
+
+6. **(Opsional) Cek status migrasi async**
    ```bash
    docker compose run --rm asyncmigrationscheck
    ```
-
-4. **Akses**
-   - PostHog UI: `https://posthog-dev.thelionparcel.com`
-   - MinIO Console: `https://posthog-dev.thelionparcel.com:19001`
 
 ---
 
@@ -127,6 +139,7 @@ docker run --rm -v posthog-docker-compose-poc_postgres_data:/data -i busybox tar
 2. Jalankan:
    ```bash
    docker compose pull
-   docker compose up -d
-   docker compose run --rm web ./bin/migrate
+   make start-core
+   make migrate
+   make start-posthog
    ```
