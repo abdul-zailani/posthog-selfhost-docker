@@ -1,1 +1,26 @@
+# Docker named volumes (jika mount bind lokal masih ada)
 volumes/
+**/data/
+**/logs/
+**/datalog/
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# Env dan kredensial
+.env
+*.env
+
+# Log & cache
+*.log
+__pycache__/
+*.pyc
+
+# Docker artefak
+*.pid
+docker-compose.override.yml
+
+# OS artifacts
+.DS_Store
+Thumbs.db

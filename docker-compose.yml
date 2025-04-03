@@ -1,4 +1,5 @@
-version: '3.8'
+version: "3.8"
+
 services:
   postgres:
     image: postgres:12.13-alpine3.17
@@ -7,9 +8,10 @@ services:
       POSTGRES_USER: posthog
       POSTGRES_PASSWORD: secret
     volumes:
-      - ./volumes/postgres/:/var/lib/postgresql/data/
+      - postgres_data:/var/lib/postgresql/data/
     healthcheck:
-      test: ["CMD", "sh", "-c", "pg_isready -U $$POSTGRES_USER -h $$(hostname -i)"]
+      test:
+        ["CMD", "sh", "-c", "pg_isready -U $$POSTGRES_USER -h $$(hostname -i)"]
       interval: 10s
       start_period: 30s
 
@@ -17,7 +19,7 @@ services:
     image: redis:6.2.7-alpine
     restart: on-failure
     ports:
-        - '6379:6379'
+      - "6379:6379"
     command: redis-server --maxmemory-policy allkeys-lru --maxmemory 200mb
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -31,7 +33,7 @@ services:
       - kafka
       - zookeeper
     volumes:
-      - ./volumes/clickhouse/:/var/lib/clickhouse/
+      - clickhouse_data:/var/lib/clickhouse/
     healthcheck:
       test: wget --no-verbose --tries=1 --spider localhost:8123/ping || exit 1
       interval: 2s
@@ -42,9 +44,9 @@ services:
     image: zookeeper:3.7.0
     restart: on-failure
     volumes:
-      - ./volumes/zookeeper/data/:/data/
-      - ./volumes/zookeeper/datalog/:/datalog/
-      - ./volumes/zookeeper/logs/:/logs/
+      - zookeeper_data:/data/
+      - zookeeper_datalog:/datalog/
+      - zookeeper_logs:/logs/
 
   kafka:
     image: bitnami/kafka:2.8.1-debian-10-r99
@@ -57,25 +59,25 @@ services:
       KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
       KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
-      ALLOW_PLAINTEXT_LISTENER: 'true'
+      ALLOW_PLAINTEXT_LISTENER: "true"
 
-  worker: &worker
+  worker: &posthog_common
     image: posthog/posthog:release-1.43.0
     command: ./bin/docker-worker-celery --with-scheduler
     restart: on-failure
     environment:
       SENTRY_DSN: $SENTRY_DSN
       SITE_URL: https://$DOMAIN
-      DISABLE_SECURE_SSL_REDIRECT: 'true'
-      IS_BEHIND_PROXY: 'true'
-      TRUST_ALL_PROXIES: 'true'
-      DATABASE_URL: 'postgres://posthog:secret@postgres:5432/posthog'
-      CLICKHOUSE_HOST: 'clickhouse'
-      CLICKHOUSE_DATABASE: 'posthog'
-      CLICKHOUSE_SECURE: 'false'
-      CLICKHOUSE_VERIFY: 'false'
-      KAFKA_URL: 'kafka://kafka'
-      REDIS_URL: 'redis://redis:6379/'
+      DISABLE_SECURE_SSL_REDIRECT: "true"
+      IS_BEHIND_PROXY: "true"
+      TRUST_ALL_PROXIES: "true"
+      DATABASE_URL: "postgres://posthog:secret@postgres:5432/posthog"
+      CLICKHOUSE_HOST: "clickhouse"
+      CLICKHOUSE_DATABASE: "posthog"
+      CLICKHOUSE_SECURE: "false"
+      CLICKHOUSE_VERIFY: "false"
+      KAFKA_URL: "kafka://kafka"
+      REDIS_URL: "redis://redis:6379/"
       SECRET_KEY: secret
       PGHOST: postgres
       PGUSER: posthog
@@ -93,29 +95,28 @@ services:
       object_storage:
         condition: service_healthy
     links:
-      - postgres:postgres
-      - redis:redis
-      - clickhouse:clickhouse
-      - kafka:kafka
-      - object_storage:object_storage
+      - postgres
+      - redis
+      - clickhouse
+      - kafka
+      - object_storage
 
   web:
-    <<: *worker
+    <<: *posthog_common
     command: sh -c "./bin/docker-server && ./bin/docker-frontend"
-    restart: on-failure
     ports:
-      - '8000:8000'
-      - '8234:8234'
+      - "8000:8000"
+      - "8234:8234"
 
   plugins:
     image: posthog/posthog:release-1.43.0
     command: ./bin/plugin-server --no-restart-loop
     restart: on-failure
     environment:
-      DATABASE_URL: 'postgres://posthog:secret@postgres:5432/posthog'
-      KAFKA_HOSTS: 'kafka:9092'
-      REDIS_URL: 'redis://redis:6379/'
-      CLICKHOUSE_HOST: 'clickhouse'
+      DATABASE_URL: "postgres://posthog:secret@postgres:5432/posthog"
+      KAFKA_HOSTS: "kafka:9092"
+      REDIS_URL: "redis://redis:6379/"
+      CLICKHOUSE_HOST: "clickhouse"
       SKIP_SERVICE_VERSION_REQUIREMENTS: 1
     depends_on:
       redis:
@@ -129,29 +130,55 @@ services:
       object_storage:
         condition: service_healthy
     links:
-      - postgres:postgres
-      - redis:redis
-      - clickhouse:clickhouse
-      - kafka:kafka
-      - object_storage:object_storage
+      - postgres
+      - redis
+      - clickhouse
+      - kafka
+      - object_storage
 
   object_storage:
     image: minio/minio:RELEASE.2022-09-17T00-09-45Z.fips
     restart: on-failure
     volumes:
-      - ./volumes/object_storage/:/data
+      - object_storage_data:/data
     environment:
       MINIO_ROOT_USER: posthog
       MINIO_ROOT_PASSWORD: secret123456789
     entrypoint: sh
-    command: -c 'mkdir -p /data/posthog && minio server --address ":19000" --console-address ":19001" /data' # create the 'posthog' bucket before starting the service
+    command: -c 'mkdir -p /data/posthog && minio server --address ":19000" --console-address ":19001" /data'
     healthcheck:
-      test: ["CMD-SHELL", "curl -sS http://127.0.0.1:19000/minio/health/live || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sS http://127.0.0.1:19000/minio/health/live || exit 1",
+        ]
       interval: 10s
       start_period: 30s
 
-
   asyncmigrationscheck:
-    <<: *worker
+    <<: *posthog_common
     command: python manage.py run_async_migrations --check
-    restart: 'no'
+    restart: "no"
+
+  caddy:
+    image: caddy:2.6.4-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  clickhouse_data:
+  zookeeper_data:
+  zookeeper_datalog:
+  zookeeper_logs:
+  object_storage_data:
+  caddy_data:
+  caddy_config:
